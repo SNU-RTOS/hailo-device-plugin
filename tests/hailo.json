@@ -1,0 +1,64 @@
+{
+    "cdiVersion": "0.7.0",
+    "kind": "hailo.ai/npu",
+    "annotations": {
+        "vendor": "Hailo Technologies",
+        "description": "Hailo NPU devices for AI inference acceleration",
+        "multi-device": "true"
+    },
+    "devices": [
+        {
+            "name": "hailo0",
+            "containerEdits": {
+                "deviceNodes": [
+                    {   
+                         "path": "/dev/hailo0",
+                        "hostPath": "/dev/hailo0",
+                        "type": "c",
+                        "major": 507,
+                        "minor": 0,
+                        "permissions": "rw"
+                    }
+                ],
+              "env": [
+                    "HAILO_DEVICE_ID=0",
+                    "HAILO_PRIMARY_DEVICE=/dev/hailo0"
+                ]
+
+            }
+        },
+        {
+            "name": "hailo1",
+            "containerEdits": {
+                "deviceNodes": [
+                    {
+                        "path": "/dev/hailo1",
+                        "hostPath": "/dev/hailo1",
+                        "type": "c",
+                        "major": 507,
+                        "minor": 1,
+                        "permissions": "rw"
+                    }
+                ],
+            
+              "env": [
+                    "HAILO_DEVICE_ID=1",
+                    "HAILO_PRIMARY_DEVICE=/dev/hailo1"
+                ]
+            }
+        }
+    ],
+    "containerEdits": {
+        "env": [
+            "HAILO_LOG_LEVEL=INFO"
+        ],
+        "mounts": [
+            {
+                "hostPath": "/sys/bus/pci/devices",
+                "containerPath": "/sys/bus/pci/devices",
+                "type": "bind",
+                "options": ["ro", "rbind"]
+            }
+        ]
+    }
+}
