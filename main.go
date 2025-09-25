@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"time"
 
 	"hailo-device-plugin/pkg/monitor"
 	"hailo-device-plugin/pkg/plugin"
@@ -29,8 +30,10 @@ func main() {
 
 	// Create plugin with monitor
 	hailoPlugin := &plugin.HailoDevicePlugin{
-		Monitor: mon,
-		CdiDir:  cdiDir,
+		Monitor:      mon,
+		CdiDir:       cdiDir,
+		SocketPath:   socketPath,
+		ResourceName: "hailo.ai/device",
 	}
 
 	if err := os.MkdirAll(path.Dir(socketPath), 0755); err != nil {
@@ -49,8 +52,22 @@ func main() {
 	s := grpc.NewServer()
 	pluginapi.RegisterDevicePluginServer(s, hailoPlugin)
 
-	log.Println("Starting Hailo device plugin server...")
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	// Start the gRPC server in a goroutine
+	go func() {
+		log.Println("Starting Hailo device plugin server...")
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	// Give the server a moment to start
+	time.Sleep(1 * time.Second)
+
+	// Register with kubelet
+	if err := hailoPlugin.Start(); err != nil {
+		log.Fatalf("failed to register with kubelet: %v", err)
 	}
+
+	// Keep the main goroutine alive
+	select {}
 }

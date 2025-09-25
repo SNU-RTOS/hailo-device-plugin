@@ -22,12 +22,53 @@ go mod tidy
 go build -o hailo-device-plugin
 ```
 
-## Running
+## Deployment
 
-The plugin must be run as a privileged container or directly on the node with access to the device plugin socket and CDI directory.
-
+### 1. Build the binary
 ```bash
-./hailo-device-plugin
+go build -o hailo-device-plugin
+```
+
+### 2. Build Docker image
+```bash
+docker build -t hailo-device-plugin:latest .
+```
+
+### 3. Deploy to Kubernetes cluster
+```bash
+kubectl apply -f deploy/daemonset.yaml
+```
+
+### 4. Verify deployment
+```bash
+# Check if the DaemonSet is running
+kubectl get ds -n kube-system hailo-device-plugin
+
+# Check device plugin registration
+kubectl describe node <node-name> | grep hailo
+
+# Check available resources
+kubectl get nodes -o yaml | grep hailo
+```
+
+## Usage in Pods
+
+Once deployed, you can request Hailo devices in your pod specifications:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hailo-test
+spec:
+  containers:
+  - name: hailo-container
+    image: ubuntu:20.04
+    resources:
+      limits:
+        hailo.ai/device: 1
+    command: ["/bin/bash"]
+    args: ["-c", "while true; do sleep 30; done;"]
 ```
 
 ## Implementation Notes
