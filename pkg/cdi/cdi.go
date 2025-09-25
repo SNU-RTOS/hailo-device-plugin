@@ -18,8 +18,9 @@ type CDISpec struct {
 
 // DeviceSpec represents a device in CDI
 type DeviceSpec struct {
-	Name           string         `json:"name"`
-	ContainerEdits ContainerEdits `json:"containerEdits"`
+	Name           string            `json:"name"`
+	Annotations    map[string]string `json:"annotations,omitempty"`
+	ContainerEdits ContainerEdits    `json:"containerEdits"`
 }
 
 // ContainerEdits for CDI
@@ -47,6 +48,7 @@ type Mount struct {
 
 // GenerateCDI creates a CDI spec file for Hailo devices
 // 모니터가 호출, 매 10초마다 디바이스를 발견해서 CDI 스펙을 생성
+// TODO: 모니터 결과에 따라 동적으로 디바이스 목록 생성할 수 있게 만들기
 func GenerateCDI(devices []string, outputDir string) error {
 	spec := CDISpec{
 		Version: "0.7.0",
@@ -57,37 +59,25 @@ func GenerateCDI(devices []string, outputDir string) error {
 			"multi-device": "true",
 		},
 		Devices: []*DeviceSpec{},
-		ContainerEdits: &ContainerEdits{
-			Env: []string{"HAILO_LOG_LEVEL=INFO"},
-			Mounts: []*Mount{
-				{
-					HostPath:      "/sys/bus/pci/devices",
-					ContainerPath: "/sys/bus/pci/devices",
-					// Type and options not in struct, but can add if needed
-				},
-			},
-		},
 	}
 
+	// Individual devices
 	for i, dev := range devices {
-		major := 507
-		minor := i
 		spec.Devices = append(spec.Devices, &DeviceSpec{
 			Name: fmt.Sprintf("hailo%d", i),
+			Annotations: map[string]string{
+				"device.type":  "npu",
+				"device.model": "hailo-8",
+				"pci.slot":     "auto-detect",
+			},
 			ContainerEdits: ContainerEdits{
 				DeviceNodes: []*DeviceNode{
 					{
 						Path:        dev,
 						HostPath:    dev,
 						Type:        "c",
-						Major:       major,
-						Minor:       minor,
 						Permissions: "rw",
 					},
-				},
-				Env: []string{
-					fmt.Sprintf("HAILO_DEVICE_ID=%d", i),
-					fmt.Sprintf("HAILO_PRIMARY_DEVICE=%s", dev),
 				},
 			},
 		})

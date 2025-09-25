@@ -33,7 +33,7 @@ func main() {
 		Monitor:      mon,
 		CdiDir:       cdiDir,
 		SocketPath:   socketPath,
-		ResourceName: "hailo.ai/device",
+		ResourceName: "hailo.ai/npu",
 	}
 
 	if err := os.MkdirAll(path.Dir(socketPath), 0755); err != nil {

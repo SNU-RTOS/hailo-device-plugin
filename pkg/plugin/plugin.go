@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"hailo-device-plugin/pkg/cdi"
@@ -24,7 +25,7 @@ type HailoDevicePlugin struct {
 
 const (
 	kubeletEndpoint = "/var/lib/kubelet/device-plugins/kubelet.sock"
-	defaultResourceName = "hailo.ai/device"
+	defaultResourceName = "hailo.ai/npu"
 )
 
 // Register registers the device plugin with the kubelet
@@ -156,20 +157,33 @@ func (p *HailoDevicePlugin) sendDeviceList(server pluginapi.DevicePlugin_ListAnd
 }
 
 func (p *HailoDevicePlugin) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
-	// Placeholder: Allocate hailo devices using CDI
+	log.Printf("Allocate called with request: %v", req)
+	
 	var response pluginapi.AllocateResponse
-	cdiPath := filepath.Join(p.CdiDir, "hailo.json")
-	for range req.ContainerRequests {
-		containerResponse := &pluginapi.ContainerAllocateResponse{
-			// Use CDI for device allocation
-			Annotations: map[string]string{
-				"cdi.k8s.io/hailo": cdiPath,
-			},
-			// Add other allocations as needed
+	
+	for _, containerReq := range req.ContainerRequests {
+		log.Printf("Processing container request for %d devices: %v", len(containerReq.DevicesIDs), containerReq.DevicesIDs)
+		
+		// Build CDI device names for requested devices
+		var cdiDevices []string
+		for _, deviceID := range containerReq.DevicesIDs {
+			// CDI device name format: hailo.ai/npu=<device-name>
+			cdiDeviceName := fmt.Sprintf("hailo.ai/npu=%s", deviceID)
+			cdiDevices = append(cdiDevices, cdiDeviceName)
 		}
+		
+		containerResponse := &pluginapi.ContainerAllocateResponse{
+			// Use CDI device names in annotations
+			Annotations: map[string]string{
+				"cdi.k8s.io/hailo": strings.Join(cdiDevices, ","),
+			},
+		}
+		
+		log.Printf("Allocated CDI devices: %v", cdiDevices)
 		response.ContainerResponses = append(response.ContainerResponses, containerResponse)
 	}
-	log.Println("Allocated devices for request:", req)
+	
+	log.Printf("Allocation response: %v", response)
 	return &response, nil
 }
 

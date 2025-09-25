@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hailo-multi-device-pod
+  labels:
+    app: hailo-multi
+spec:
+  restartPolicy: Never
+  containers:
+  - name: hailo-container
+    image: ubuntu:20.04
+    command: ["/bin/bash"]
+    args: 
+    - "-c"
+    - |
+      echo "=== Multi-Device Hailo Test Pod ==="
+      echo "Available Hailo devices:"
+      ls -la /dev/hailo* 2>/dev/null || echo "No /dev/hailo* devices found"
+      echo ""
+      echo "This pod has access to multiple Hailo devices"
+      sleep 300
+    resources:
+      requests:
+        hailo.ai/npu: 2  # 2개 디바이스 모두 요청
+      limits:
+        hailo.ai/npu: 2
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName

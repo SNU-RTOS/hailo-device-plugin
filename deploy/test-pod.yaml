@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hailo-test-pod
+  labels:
+    app: hailo-test
+spec:
+  restartPolicy: Never
+  containers:
+  - name: hailo-container
+    image: ubuntu:20.04
+    command: ["/bin/bash"]
+    args: 
+    - "-c"
+    - |
+      echo "=== Hailo Device Test Pod Started ==="
+      echo "Node: $NODE_NAME"
+      echo "Pod: $POD_NAME"
+      echo ""
+      echo "=== Environment Variables ==="
+      env | grep -i hailo || echo "No HAILO environment variables found"
+      echo ""
+      echo "=== Device Files ==="
+      ls -la /dev/hailo* 2>/dev/null || echo "No /dev/hailo* devices found"
+      echo ""
+      echo "=== PCI Devices ==="
+      ls -la /sys/bus/pci/devices/ 2>/dev/null | head -10 || echo "Cannot access PCI devices"
+      echo ""
+      echo "=== CDI Annotations Check ==="
+      echo "Checking for CDI annotations in pod spec..."
+      echo ""
+      echo "=== Keeping pod alive for inspection ==="
+      echo "Pod will stay running for 5 minutes for inspection..."
+      sleep 300
+      echo "=== Test completed ==="
+    resources:
+      requests:
+        hailo.ai/npu: 1
+      limits:
+        hailo.ai/npu: 1
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    securityContext:
+      privileged: false
+      allowPrivilegeEscalation: false
+  nodeSelector:
+    # 필요하면 특정 노드 선택
+    # kubernetes.io/hostname: your-node-name

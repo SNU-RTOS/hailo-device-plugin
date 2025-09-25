@@ -1,0 +1,71 @@
+{
+  "cdiVersion": "0.7.0",
+  "kind": "hailo.ai/npu",
+  "annotations": {
+    "vendor": "Hailo Technologies",
+    "description": "Hailo NPU devices for AI inference acceleration",
+    "multi-device": "true"
+  },
+  "devices": [
+    {
+      "name": "hailo0",
+      "annotations": {
+        "device.type": "npu",
+        "device.model": "hailo-8",
+        "pci.slot": "auto-detect"
+      },
+      "containerEdits": {
+        "deviceNodes": [
+          {
+            "path": "/dev/hailo0",
+            "hostPath": "/dev/hailo0",
+            "type": "c",
+            "permissions": "rw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "hailo1",
+      "annotations": {
+        "device.type": "npu",
+        "device.model": "hailo-8",
+        "pci.slot": "auto-detect"
+      },
+      "containerEdits": {
+        "deviceNodes": [
+          {
+            "path": "/dev/hailo1",
+            "hostPath": "/dev/hailo1",
+            "type": "c",
+            "permissions": "rw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "all",
+      "annotations": {
+        "device.type": "npu",
+        "device.model": "hailo-8",
+        "description": "All available Hailo NPU devices"
+      },
+      "containerEdits": {
+        "deviceNodes": [
+          {
+            "path": "/dev/hailo0",
+            "hostPath": "/dev/hailo0",
+            "type": "c",
+            "permissions": "rw"
+          },
+          {
+            "path": "/dev/hailo1",
+            "hostPath": "/dev/hailo1",
+            "type": "c",
+            "permissions": "rw"
+          }
+        ]
+      }
+    }
+  ]
+}

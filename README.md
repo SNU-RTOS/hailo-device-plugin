@@ -88,3 +88,7 @@ Implements the Kubernetes Device Plugin API v1beta1:
 - `Allocate`
 - `GetPreferredAllocation`
 - `PreStartContainer`
+
+## TODO
+
+- [ ] has to implement monitor using hailortcli
