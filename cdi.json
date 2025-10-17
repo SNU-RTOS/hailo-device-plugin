@@ -42,30 +42,6 @@
           }
         ]
       }
-    },
-    {
-      "name": "all",
-      "annotations": {
-        "device.type": "npu",
-        "device.model": "hailo-8",
-        "description": "All available Hailo NPU devices"
-      },
-      "containerEdits": {
-        "deviceNodes": [
-          {
-            "path": "/dev/hailo0",
-            "hostPath": "/dev/hailo0",
-            "type": "c",
-            "permissions": "rw"
-          },
-          {
-            "path": "/dev/hailo1",
-            "hostPath": "/dev/hailo1",
-            "type": "c",
-            "permissions": "rw"
-          }
-        ]
-      }
     }
   ]
 }

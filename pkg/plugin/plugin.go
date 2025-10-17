@@ -24,7 +24,7 @@ type HailoDevicePlugin struct {
 }
 
 const (
-	kubeletEndpoint = "/var/lib/kubelet/device-plugins/kubelet.sock"
+	kubeletEndpoint     = "/var/lib/kubelet/device-plugins/kubelet.sock"
 	defaultResourceName = "hailo.ai/npu"
 )
 
@@ -40,14 +40,14 @@ func (p *HailoDevicePlugin) Register() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conn, err := grpc.DialContext(ctx, "unix://"+kubeletEndpoint, 
-		grpc.WithInsecure(), 
+	conn, err := grpc.DialContext(ctx, "unix://"+kubeletEndpoint,
+		grpc.WithInsecure(),
 		grpc.WithBlock())
 	if err != nil {
 		return fmt.Errorf("failed to connect to kubelet: %v", err)
 	}
 	defer conn.Close()
-	
+
 	log.Println("Connected to kubelet, sending registration request...")
 
 	client := pluginapi.NewRegistrationClient(conn)
@@ -57,7 +57,7 @@ func (p *HailoDevicePlugin) Register() error {
 		ResourceName: p.ResourceName,
 	}
 
-	log.Printf("Registering with kubelet: Version=%s, Endpoint=%s, ResourceName=%s", 
+	log.Printf("Registering with kubelet: Version=%s, Endpoint=%s, ResourceName=%s",
 		req.Version, req.Endpoint, req.ResourceName)
 
 	_, err = client.Register(context.Background(), req)
@@ -75,7 +75,7 @@ func (p *HailoDevicePlugin) Start() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Keep checking kubelet connection and re-register if needed
 	go func() {
 		for {
@@ -85,7 +85,7 @@ func (p *HailoDevicePlugin) Start() error {
 			}
 		}
 	}()
-	
+
 	return nil
 }
 
@@ -97,16 +97,16 @@ func (p *HailoDevicePlugin) GetDevicePluginOptions(context.Context, *pluginapi.E
 
 func (p *HailoDevicePlugin) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
 	log.Printf("ListAndWatch called, reading devices from CDI dir: %s", p.CdiDir)
-	
+
 	// Send initial device list
 	if err := p.sendDeviceList(server); err != nil {
 		return err
 	}
-	
+
 	// Keep the stream alive and periodically check for device changes
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -130,7 +130,7 @@ func (p *HailoDevicePlugin) sendDeviceList(server pluginapi.DevicePlugin_ListAnd
 		// Fallback to empty list or handle error
 		devices = []string{}
 	}
-	
+
 	log.Printf("Found %d devices from CDI: %v", len(devices), devices)
 
 	var pluginDevices []*pluginapi.Device
@@ -144,26 +144,26 @@ func (p *HailoDevicePlugin) sendDeviceList(server pluginapi.DevicePlugin_ListAnd
 	}
 
 	log.Printf("Sending %d devices to kubelet: %v", len(pluginDevices), pluginDevices)
-	
+
 	response := &pluginapi.ListAndWatchResponse{Devices: pluginDevices}
-	
+
 	if err := server.Send(response); err != nil {
 		log.Printf("Failed to send device list: %v", err)
 		return err
 	}
-	
+
 	log.Println("Successfully sent device list to kubelet")
 	return nil
 }
 
 func (p *HailoDevicePlugin) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	log.Printf("Allocate called with request: %v", req)
-	
+
 	var response pluginapi.AllocateResponse
-	
+
 	for _, containerReq := range req.ContainerRequests {
 		log.Printf("Processing container request for %d devices: %v", len(containerReq.DevicesIDs), containerReq.DevicesIDs)
-		
+
 		// Build CDI device names for requested devices
 		var cdiDevices []string
 		for _, deviceID := range containerReq.DevicesIDs {
@@ -171,18 +171,18 @@ func (p *HailoDevicePlugin) Allocate(ctx context.Context, req *pluginapi.Allocat
 			cdiDeviceName := fmt.Sprintf("hailo.ai/npu=%s", deviceID)
 			cdiDevices = append(cdiDevices, cdiDeviceName)
 		}
-		
+
 		containerResponse := &pluginapi.ContainerAllocateResponse{
 			// Use CDI device names in annotations
 			Annotations: map[string]string{
 				"cdi.k8s.io/hailo": strings.Join(cdiDevices, ","),
 			},
 		}
-		
+
 		log.Printf("Allocated CDI devices: %v", cdiDevices)
 		response.ContainerResponses = append(response.ContainerResponses, containerResponse)
 	}
-	
+
 	log.Printf("Allocation response: %v", response)
 	return &response, nil
 }

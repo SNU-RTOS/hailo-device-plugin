@@ -1,0 +1,49 @@
+# Binaries
+hailo-device-plugin
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.test
+*.out
+*_test.go
+tests/
+
+# Build artifacts
+*.o
+*.a
+
+# Dependencies
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+hailort.log
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Kubernetes manifests
+deploy/
+
+# Other
+cdi.json
