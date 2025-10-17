@@ -3,7 +3,8 @@ package monitor
 import (
 	"log"
 	"time"
-
+	"os/exec"
+	"strings"
 	"hailo-device-plugin/pkg/cdi"
 )
 
@@ -25,6 +26,7 @@ func (m *ResourceMonitor) Start() {
 
 		for range ticker.C {
 			devices := m.discoverDevices() // Implement device discovery
+			log.Printf("Discovered devices: %v", devices)
 			if err := cdi.GenerateCDI(devices, m.cdiDir); err != nil {
 				log.Printf("Failed to generate CDI: %v", err)
 			} else {
@@ -37,5 +39,10 @@ func (m *ResourceMonitor) Start() {
 // discoverDevices simulates device discovery (replace with actual Hailo API)
 func (m *ResourceMonitor) discoverDevices() []string {
 	// Placeholder: Return list of device paths
-	return []string{"/dev/hailo0", "/dev/hailo1"}
+	output, err := exec.Command("ls", "/sys/class/hailo_chardev").Output()
+	if err != nil {
+		log.Printf("Failed to list devices: %v", err)
+		return nil
+	}
+	return strings.Split(strings.TrimSpace(string(output)), "\n")
 }

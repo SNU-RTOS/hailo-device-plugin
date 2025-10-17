@@ -48,7 +48,6 @@ type Mount struct {
 
 // GenerateCDI creates a CDI spec file for Hailo devices
 // 모니터가 호출, 매 10초마다 디바이스를 발견해서 CDI 스펙을 생성
-// TODO: 모니터 결과에 따라 동적으로 디바이스 목록 생성할 수 있게 만들기
 func GenerateCDI(devices []string, outputDir string) error {
 	spec := CDISpec{
 		Version: "0.7.0",
@@ -62,9 +61,9 @@ func GenerateCDI(devices []string, outputDir string) error {
 	}
 
 	// Individual devices
-	for i, dev := range devices {
+	for _, dev := range devices {
 		spec.Devices = append(spec.Devices, &DeviceSpec{
-			Name: fmt.Sprintf("hailo%d", i),
+			Name: dev,
 			Annotations: map[string]string{
 				"device.type":  "npu",
 				"device.model": "hailo-8",
@@ -73,8 +72,8 @@ func GenerateCDI(devices []string, outputDir string) error {
 			ContainerEdits: ContainerEdits{
 				DeviceNodes: []*DeviceNode{
 					{
-						Path:        dev,
-						HostPath:    dev,
+						Path:        fmt.Sprintf("/dev/%s", dev),
+						HostPath:    fmt.Sprintf("/dev/%s", dev),
 						Type:        "c",
 						Permissions: "rw",
 					},
