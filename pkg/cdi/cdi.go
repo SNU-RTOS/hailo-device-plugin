@@ -42,8 +42,54 @@ type DeviceNode struct {
 
 // Mount for CDI
 type Mount struct {
-	HostPath      string `json:"hostPath"`
-	ContainerPath string `json:"containerPath"`
+	HostPath      string   `json:"hostPath"`
+	ContainerPath string   `json:"containerPath"`
+	Options       []string `json:"options,omitempty"`
+}
+
+// resolveSysfsPath resolves the actual sysfs path for a given Hailo device
+// Returns the real device path and its parent hailo_chardev directory
+func resolveSysfsPath(deviceID string) (devicePath string, chardevPath string, err error) {
+	symlinkPath := filepath.Join("/sys/class/hailo_chardev", deviceID)
+
+	// Resolve the symlink to get the real device path
+	realPath, err := filepath.EvalSymlinks(symlinkPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve symlink %s: %w", symlinkPath, err)
+	}
+
+	// The real path looks like: /sys/devices/pci0005:00/0005:00:07.0/0005:04:00.0/hailo_chardev/hailo0
+	// We need the parent directory (hailo_chardev) path
+	chardevDir := filepath.Dir(realPath)
+
+	return realPath, chardevDir, nil
+}
+
+// createDeviceSpecificSysfsMounts creates mount configurations for device-specific sysfs
+// This ensures the container only sees the assigned Hailo device in /sys/class/hailo_chardev/
+func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
+	devicePath, chardevPath, err := resolveSysfsPath(deviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	mounts := []*Mount{
+		// Mount the specific device's sysfs directory
+		// This makes the device appear as the only device in the container
+		{
+			HostPath:      chardevPath,
+			ContainerPath: "/sys/class/hailo_chardev",
+			Options:       []string{"ro", "bind"},
+		},
+		// Also mount the specific device node within that directory
+		{
+			HostPath:      devicePath,
+			ContainerPath: fmt.Sprintf("/sys/class/hailo_chardev/%s", deviceID),
+			Options:       []string{"ro", "bind"},
+		},
+	}
+
+	return mounts, nil
 }
 
 // GenerateCDI creates a CDI spec file for Hailo devices
@@ -62,6 +108,14 @@ func GenerateCDI(devices []string, outputDir string) error {
 
 	// Individual devices
 	for _, dev := range devices {
+		// Create device-specific sysfs mounts to isolate this device
+		sysfsMounts, err := createDeviceSpecificSysfsMounts(dev)
+		if err != nil {
+			// Log warning but continue - device will still work without sysfs isolation
+			fmt.Fprintf(os.Stderr, "Warning: failed to create sysfs mounts for %s: %v\n", dev, err)
+			sysfsMounts = []*Mount{}
+		}
+
 		spec.Devices = append(spec.Devices, &DeviceSpec{
 			Name: dev,
 			Annotations: map[string]string{
@@ -78,6 +132,7 @@ func GenerateCDI(devices []string, outputDir string) error {
 						Permissions: "rw",
 					},
 				},
+				Mounts: sysfsMounts,
 			},
 		})
 	}
