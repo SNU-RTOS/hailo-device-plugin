@@ -11,28 +11,71 @@ This is a Kubernetes device plugin for Hailo AI accelerators. It provides the ne
 
 ## Prerequisites
 
-- Go 1.21 or later
 - Kubernetes cluster with device plugin support
-- CDI support enabled in the cluster
+- CDI (Container Device Interface) support enabled in the container runtime
 
-## Building
+### Enabling CDI Support
 
-```bash
-go mod tidy
-go build -o hailo-device-plugin
+For detailed CDI configuration, refer to the [official CDI documentation](https://github.com/cncf-tags/container-device-interface#how-to-configure-cdi).
+
+**For K3s:**
+
+Edit `/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl` and add:
+
+```toml
+[plugins."io.containerd.grpc.v1.cri"]
+  enable_cdi = true
+  cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 ```
 
-## Deployment
+Then restart K3s:
+```bash
+sudo systemctl restart k3s
+```
 
-### Quick Start with Makefile
+## Quick Start
 
-The project includes a Makefile for easy building and deployment:
+Deploy the Hailo device plugin with a single command:
 
 ```bash
-# Build, dockerize, and deploy in one command
-make all
+kubectl create -f https://raw.githubusercontent.com/SNU-RTOS/hailo-device-plugin/main/deploy/hailo-device-plugin.yaml
+```
 
-# Or step by step:
+Verify the deployment:
+
+```bash
+# Check DaemonSet status
+kubectl get ds -n kube-system hailo-device-plugin
+
+# Check available Hailo devices on nodes
+kubectl get nodes -o custom-columns=NAME:.metadata.name,HAILO:.status.capacity.hailo\\.ai/npu
+```
+
+Test with a pod:
+
+```bash
+kubectl run hailo-test --image=ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64 \
+  --restart=Never --rm -it \
+  --overrides='{"spec":{"containers":[{"name":"hailo-test","image":"ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64","command":["hailortcli","scan"],"resources":{"limits":{"hailo.ai/npu":"1"}}}]}}' \
+  -- hailortcli scan
+```
+
+Expected output showing detected Hailo devices:
+
+```
+Hailo Devices:
+[0] PCIe: 0000:01:00.0
+```
+
+## Building and Deployment
+
+### Using Makefile
+
+```bash
+# Build and push multi-architecture image (amd64 + arm64)
+make docker-build-multiarch
+
+# Or build locally for single architecture
 make build                    # Build the binary
 make docker-build            # Build Docker image
 make deploy                  # Deploy to Kubernetes
@@ -42,83 +85,30 @@ make status                  # View deployment status
 make check-nodes             # Check node Hailo resources
 ```
 
-### Manual Deployment Steps
+### Manual Steps
 
-#### 1. Build the Binary
+For custom builds or modifications:
+
 ```bash
+# 1. Build binary
 go mod tidy
 go build -o hailo-device-plugin
-```
 
-#### 2. Build Docker Image
-```bash
-docker build -t hailo-device-plugin:latest .
-```
-
-#### 3. (Optional) Push to Registry
-If using a private registry:
-```bash
-# Tag the image
-docker tag hailo-device-plugin:latest your-registry.com/hailo-device-plugin:latest
-
-# Push to registry
+# 2. Build and push Docker image
+docker build -t your-registry.com/hailo-device-plugin:latest .
 docker push your-registry.com/hailo-device-plugin:latest
 
-# Update deploy/daemonset.yaml with your registry URL
+# 3. Deploy with custom image
+kubectl apply -f deploy/hailo-device-plugin.yaml
+# (Update image in deploy/hailo-device-plugin.yaml if needed)
 ```
 
-Or use Makefile:
-```bash
-make docker-push REGISTRY=your-registry.com IMAGE_TAG=v1.0.0
-```
-
-#### 4. Deploy RBAC Resources
-```bash
-kubectl apply -f deploy/rbac.yaml
-```
-
-This creates:
-- ServiceAccount: `hailo-device-plugin` in `kube-system` namespace
-- ClusterRole with permissions to access nodes and pods
-- ClusterRoleBinding to bind the role to the service account
-
-#### 5. Deploy DaemonSet
-```bash
-kubectl apply -f deploy/daemonset.yaml
-```
-
-If using custom registry:
-```bash
-make deploy-custom REGISTRY=your-registry.com IMAGE_TAG=v1.0.0
-```
-
-#### 6. Verify Deployment
-```bash
-# Check if the DaemonSet is running
-kubectl get ds -n kube-system hailo-device-plugin
-
-# Check pod status
-kubectl get pods -n kube-system -l app=hailo-device-plugin
-
-# View logs
-kubectl logs -n kube-system -l app=hailo-device-plugin -f
-
-# Check device plugin registration
-kubectl describe node <node-name> | grep hailo
-
-# Check available resources
-kubectl get nodes -o custom-columns=NAME:.metadata.name,HAILO:.status.capacity.hailo\\.ai/npu
-```
-
-### Cleanup / Removal
+### Cleanup
 
 ```bash
-# Using Makefile
 make undeploy
-
-# Or manually
-kubectl delete -f deploy/daemonset.yaml
-kubectl delete -f deploy/rbac.yaml
+# or
+kubectl delete -f deploy/hailo-device-plugin.yaml
 ```
 
 ## Usage in Pods
@@ -133,13 +123,16 @@ metadata:
 spec:
   containers:
   - name: hailo-container
-    image: ubuntu:20.04
+    image: ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64  # Use amd64 for x86 architecture
     resources:
       limits:
         hailo.ai/npu: 1
-    command: ["/bin/bash"]
-    args: ["-c", "while true; do sleep 30; done;"]
+    command: ["hailortcli", "scan"]  # Or use ["/bin/bash", "-c", "while true; do sleep 30; done;"] for long-running pod
 ```
+
+**Note**: Change the image tag to match your architecture:
+- `ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64` for x86_64/AMD64
+- `ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64` for ARM64/aarch64
 
 ## Implementation Notes
 
