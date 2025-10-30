@@ -28,9 +28,9 @@ docker-build:
 # Build and push multi-architecture Docker image (amd64 + arm64)
 docker-build-multiarch: buildx-setup
 	@echo "Building and pushing multi-architecture image for $(PLATFORMS)..."
+	@echo "Target: $(FULL_IMAGE_NAME)"
 	docker buildx build \
 		--platform $(PLATFORMS) \
-		--tag $(IMAGE_NAME):$(IMAGE_TAG) \
 		--tag $(FULL_IMAGE_NAME) \
 		--push \
 		.
@@ -41,15 +41,15 @@ docker-push: docker-build
 
 # Deploy DaemonSet to Kubernetes
 deploy:
-	kubectl apply -f deploy/daemonset.yaml
+	kubectl apply -f deploy/hailo-device-plugin.yaml
 
 # Deploy with custom image
 deploy-custom:
-	cat deploy/daemonset.yaml | sed 's|image: hailo-device-plugin:latest|image: $(FULL_IMAGE_NAME)|' | kubectl apply -f -
+	cat deploy/hailo-device-plugin.yaml | sed 's|image: hailo-device-plugin:latest|image: $(FULL_IMAGE_NAME)|' | kubectl apply -f -
 
 # Undeploy from Kubernetes
 undeploy:
-	kubectl delete -f deploy/daemonset.yaml --ignore-not-found=true
+	kubectl delete -f deploy/hailo-device-plugin.yaml --ignore-not-found=true
 
 # Clean up built artifacts
 clean:
