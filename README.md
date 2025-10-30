@@ -154,4 +154,4 @@ Implements the Kubernetes Device Plugin API v1beta1:
 
 ## TODO
 
-- [ ] has to implement monitor using hailortcli
+- [ ] Implement detailed resource monitor by using hailortcli
