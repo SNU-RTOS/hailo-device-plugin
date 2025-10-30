@@ -1,26 +1,45 @@
-.PHONY: build docker-build docker-push deploy clean test
+.PHONY: build docker-build docker-build-multiarch docker-push deploy clean test buildx-setup
 
 # Variables
 IMAGE_NAME ?= hailo-device-plugin
 IMAGE_TAG ?= latest
 REGISTRY ?= ghcr.io/snu-rtos
 FULL_IMAGE_NAME = $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+PLATFORMS ?= linux/amd64,linux/arm64
 
 # Build the binary locally
 build:
 	go mod tidy
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o hailo-device-plugin .
 
-# Build the Docker image
+# Setup Docker Buildx for multi-arch builds
+buildx-setup:
+	@echo "Setting up Docker Buildx..."
+	@docker buildx inspect hailo-builder > /dev/null 2>&1 || \
+		docker buildx create --name hailo-builder --driver docker-container --bootstrap
+	@docker buildx use hailo-builder
+	@echo "Buildx builder 'hailo-builder' is ready"
+
+# Build the Docker image (single architecture, local)
 docker-build:
 	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME)
 
-# Push the Docker image to registry
+# Build and push multi-architecture Docker image (amd64 + arm64)
+docker-build-multiarch: buildx-setup
+	@echo "Building and pushing multi-architecture image for $(PLATFORMS)..."
+	docker buildx build \
+		--platform $(PLATFORMS) \
+		--tag $(IMAGE_NAME):$(IMAGE_TAG) \
+		--tag $(FULL_IMAGE_NAME) \
+		--push \
+		.
+
+# Push the Docker image to registry (single architecture)
 docker-push: docker-build
 	docker push $(FULL_IMAGE_NAME)
 
-# Deploy RBAC and DaemonSet to Kubernetes
+# Deploy DaemonSet to Kubernetes
 deploy:
 	kubectl apply -f deploy/daemonset.yaml
 
@@ -61,19 +80,22 @@ all: build docker-build deploy
 # Help
 help:
 	@echo "Available targets:"
-	@echo "  build           - Build the binary locally"
-	@echo "  docker-build    - Build the Docker image"
-	@echo "  docker-push     - Push the Docker image to registry"
-	@echo "  deploy          - Deploy to Kubernetes cluster"
-	@echo "  deploy-custom   - Deploy with custom image from REGISTRY variable"
-	@echo "  undeploy        - Remove from Kubernetes cluster"
-	@echo "  clean           - Clean up built artifacts"
-	@echo "  test            - Run tests"
-	@echo "  status          - Check deployment status"
-	@echo "  check-nodes     - Check node capacity for Hailo devices"
-	@echo "  all             - Build, dockerize, and deploy"
+	@echo "  build                  - Build the binary locally"
+	@echo "  buildx-setup           - Setup Docker Buildx for multi-arch builds"
+	@echo "  docker-build           - Build the Docker image (single architecture)"
+	@echo "  docker-build-multiarch - Build and push multi-arch image (amd64 + arm64)"
+	@echo "  docker-push            - Push the Docker image to registry (single arch)"
+	@echo "  deploy                 - Deploy to Kubernetes cluster"
+	@echo "  deploy-custom          - Deploy with custom image from REGISTRY variable"
+	@echo "  undeploy               - Remove from Kubernetes cluster"
+	@echo "  clean                  - Clean up built artifacts"
+	@echo "  test                   - Run tests"
+	@echo "  status                 - Check deployment status"
+	@echo "  check-nodes            - Check node capacity for Hailo devices"
+	@echo "  all                    - Build, dockerize, and deploy"
 	@echo ""
 	@echo "Variables:"
 	@echo "  IMAGE_NAME      - Docker image name (default: hailo-device-plugin)"
 	@echo "  IMAGE_TAG       - Docker image tag (default: latest)"
-	@echo "  REGISTRY        - Docker registry (default: docker.io/yourregistry)"
+	@echo "  REGISTRY        - Docker registry (default: ghcr.io/snu-rtos)"
+	@echo "  PLATFORMS       - Target platforms (default: linux/amd64,linux/arm64)"
