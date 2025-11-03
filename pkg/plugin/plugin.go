@@ -69,11 +69,32 @@ func (p *HailoDevicePlugin) Register() error {
 	return nil
 }
 
+// ensureCleanupScript creates a cleanup script for removing files from empty-chardev
+func ensureCleanupScript() error {
+	scriptPath := "/var/lib/hailo-cdi/cleanup-empty-chardev.sh"
+	scriptContent := `#!/bin/sh
+# Cleanup script to remove all files from empty-chardev directory
+rm -rf /var/lib/hailo-cdi/empty-chardev/*
+exit 0
+`
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		return fmt.Errorf("failed to create cleanup script: %w", err)
+	}
+	return nil
+}
+
 // Start starts the device plugin
 func (p *HailoDevicePlugin) Start() error {
 	err := p.Register()
 	if err != nil {
 		return err
+	}
+
+	// Emptdy directory for mounting isolated sysfs paths
+	os.MkdirAll("/var/lib/hailo-cdi/empty-chardev", 0755)
+	// Ensure cleanup script exists
+	if err := ensureCleanupScript(); err != nil {
+		return fmt.Errorf("failed to ensure cleanup script: %w", err)
 	}
 
 	// Keep checking kubelet connection and re-register if needed

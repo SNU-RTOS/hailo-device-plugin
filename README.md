@@ -56,7 +56,7 @@ Test with a pod:
 ```bash
 kubectl run hailo-test --image=ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64 \
   --restart=Never --rm -it \
-  --overrides='{"spec":{"containers":[{"name":"hailo-test","image":"ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64","command":["hailortcli","scan"],"resources":{"limits":{"hailo.ai/npu":"1"}}}]}}' \
+  --overrides='{"spec":{"containers":[{"name":"hailo-test","image":"ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64","command":["hailortcli","scan"],"resources":{"limits":{"hailo.ai/npu":"1"}}}]}}' \
   -- hailortcli scan
 ```
 

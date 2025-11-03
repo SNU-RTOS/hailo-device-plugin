@@ -28,6 +28,7 @@ type ContainerEdits struct {
 	Env         []string      `json:"env,omitempty"`
 	DeviceNodes []*DeviceNode `json:"deviceNodes,omitempty"`
 	Mounts      []*Mount      `json:"mounts,omitempty"`
+	Hooks       []*Hook       `json:"hooks,omitempty"`
 }
 
 // DeviceNode for CDI
@@ -46,6 +47,16 @@ type Mount struct {
 	ContainerPath string   `json:"containerPath"`
 	Options       []string `json:"options,omitempty"`
 }
+
+// Hook for CDI lifecycle hooks
+type Hook struct {
+	HookName string   `json:"hookName"`
+	Path     string   `json:"path"`
+	Args     []string `json:"args,omitempty"`
+	Env      []string `json:"env,omitempty"`
+	Timeout  int      `json:"timeout,omitempty"`
+}
+
 
 // resolveSysfsPath resolves the actual sysfs path for a given Hailo device
 // Returns the real device path and its parent hailo_chardev directory
@@ -68,20 +79,15 @@ func resolveSysfsPath(deviceID string) (devicePath string, chardevPath string, e
 // createDeviceSpecificSysfsMounts creates mount configurations for device-specific sysfs
 // This ensures the container only sees the assigned Hailo device in /sys/class/hailo_chardev/
 func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
-	devicePath, chardevPath, err := resolveSysfsPath(deviceID)
+	devicePath, _, err := resolveSysfsPath(deviceID)
 	if err != nil {
 		return nil, err
 	}
 
 	mounts := []*Mount{
-		// Mount the specific device's sysfs directory
-		// This makes the device appear as the only device in the container
-		{
-			HostPath:      chardevPath,
-			ContainerPath: "/sys/class/hailo_chardev",
-			Options:       []string{"ro", "bind"},
-		},
-		// Also mount the specific device node within that directory
+		// Mount only the specific device into /sys/class/hailo_chardev/<deviceID>
+		// The parent directory (/sys/class/hailo_chardev) is already mounted as empty
+		// from the global containerEdits, so this will overlay just this device
 		{
 			HostPath:      devicePath,
 			ContainerPath: fmt.Sprintf("/sys/class/hailo_chardev/%s", deviceID),
@@ -95,6 +101,7 @@ func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
 // GenerateCDI creates a CDI spec file for Hailo devices
 // 모니터가 호출, 매 10초마다 디바이스를 발견해서 CDI 스펙을 생성
 func GenerateCDI(devices []string, outputDir string) error {
+
 	spec := CDISpec{
 		Version: "0.7.0",
 		Kind:    "hailo.ai/npu",
@@ -104,6 +111,26 @@ func GenerateCDI(devices []string, outputDir string) error {
 			"multi-device": "true",
 		},
 		Devices: []*DeviceSpec{},
+		// Global container edits applied to all devices
+		ContainerEdits: &ContainerEdits{
+			Mounts: []*Mount{
+				{
+					// Mount empty directory to /sys/class/hailo_chardev with rw
+					// This hides all devices initially and allows mounting devices inside
+					HostPath:      "/var/lib/hailo-cdi/empty-chardev",
+					ContainerPath: "/sys/class/hailo_chardev",
+					Options:       []string{"rw", "bind"},
+				},
+			},
+			Hooks: []*Hook{
+				{
+					HookName: "poststop",
+					Path:     "/var/lib/hailo-cdi/cleanup-empty-chardev.sh",
+					Args:     []string{},
+					Timeout:  5,
+				},
+			},
+		},
 	}
 
 	// Individual devices
