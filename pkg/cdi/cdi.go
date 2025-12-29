@@ -58,28 +58,23 @@ type Hook struct {
 }
 
 
-// resolveSysfsPath resolves the actual sysfs path for a given Hailo device
-// Returns the real device path and its parent hailo_chardev directory
-func resolveSysfsPath(deviceID string) (devicePath string, chardevPath string, err error) {
+// resolveSysfsPath verifies that the device path exists
+func resolveSysfsPath(deviceID string) error {
 	symlinkPath := filepath.Join("/sys/class/hailo_chardev", deviceID)
 
-	// Resolve the symlink to get the real device path
-	realPath, err := filepath.EvalSymlinks(symlinkPath)
+	// Verify the symlink exists
+	_, err := os.Stat(symlinkPath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to resolve symlink %s: %w", symlinkPath, err)
+		return fmt.Errorf("device path %s does not exist: %w", symlinkPath, err)
 	}
 
-	// The real path looks like: /sys/devices/pci0005:00/0005:00:07.0/0005:04:00.0/hailo_chardev/hailo0
-	// We need the parent directory (hailo_chardev) path
-	chardevDir := filepath.Dir(realPath)
-
-	return realPath, chardevDir, nil
+	return nil
 }
 
 // createDeviceSpecificSysfsMounts creates mount configurations for device-specific sysfs
 // This ensures the container only sees the assigned Hailo device in /sys/class/hailo_chardev/
 func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
-	devicePath, _, err := resolveSysfsPath(deviceID)
+	err := resolveSysfsPath(deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +84,7 @@ func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
 		// The parent directory (/sys/class/hailo_chardev) is already mounted as empty
 		// from the global containerEdits, so this will overlay just this device
 		{
-			HostPath:      devicePath,
+			HostPath:      fmt.Sprintf("/sys/class/hailo_chardev/%s", deviceID),
 			ContainerPath: fmt.Sprintf("/sys/class/hailo_chardev/%s", deviceID),
 			Options:       []string{"ro", "bind"},
 		},
@@ -103,7 +98,7 @@ func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
 func GenerateCDI(devices []string, outputDir string) error {
 
 	spec := CDISpec{
-		Version: "0.7.0",
+		Version: "0.5.0",
 		Kind:    "hailo.ai/npu",
 		Annotations: map[string]string{
 			"vendor":       "Hailo Technologies",
