@@ -71,7 +71,7 @@ Hailo Devices:
 [0] PCIe: 0000:01:00.0
 ```
 
-If use want to check is pod's bash shell, try this command
+If use want to check in pod's bash shell, try this command
 
 ```bash
 kubectl run hailo-test --image=ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64 or \
