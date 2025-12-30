@@ -98,7 +98,7 @@ func createDeviceSpecificSysfsMounts(deviceID string) ([]*Mount, error) {
 func GenerateCDI(devices []string, outputDir string) error {
 
 	spec := CDISpec{
-		Version: "0.5.0",
+		Version: "0.6.0",
 		Kind:    "hailo.ai/npu",
 		Annotations: map[string]string{
 			"vendor":       "Hailo Technologies",
