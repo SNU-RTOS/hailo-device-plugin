@@ -3,6 +3,7 @@ module hailo-device-plugin
 go 1.21
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	google.golang.org/grpc v1.58.3
 	k8s.io/kubelet v0.28.2
 )

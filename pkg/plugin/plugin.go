@@ -4,110 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"hailo-device-plugin/pkg/cdi"
-	"hailo-device-plugin/pkg/monitor"
 
-	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 type HailoDevicePlugin struct {
-	Monitor      *monitor.ResourceMonitor
 	CdiDir       string
 	SocketPath   string
 	ResourceName string
-}
-
-const (
-	kubeletEndpoint     = "/var/lib/kubelet/device-plugins/kubelet.sock"
-	defaultResourceName = "hailo.ai/npu"
-)
-
-// Register registers the device plugin with the kubelet
-func (p *HailoDevicePlugin) Register() error {
-	// Check if kubelet socket exists
-	log.Printf("Checking kubelet socket at: %s", kubeletEndpoint)
-	if _, err := os.Stat(kubeletEndpoint); os.IsNotExist(err) {
-		return fmt.Errorf("kubelet socket not found at %s", kubeletEndpoint)
-	}
-	log.Println("Kubelet socket found, attempting to connect...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx, "unix://"+kubeletEndpoint,
-		grpc.WithInsecure(),
-		grpc.WithBlock())
-	if err != nil {
-		return fmt.Errorf("failed to connect to kubelet: %v", err)
-	}
-	defer conn.Close()
-
-	log.Println("Connected to kubelet, sending registration request...")
-
-	client := pluginapi.NewRegistrationClient(conn)
-	req := &pluginapi.RegisterRequest{
-		Version:      pluginapi.Version,
-		Endpoint:     filepath.Base(p.SocketPath),
-		ResourceName: p.ResourceName,
-	}
-
-	log.Printf("Registering with kubelet: Version=%s, Endpoint=%s, ResourceName=%s",
-		req.Version, req.Endpoint, req.ResourceName)
-
-	_, err = client.Register(context.Background(), req)
-	if err != nil {
-		return fmt.Errorf("registration failed: %v", err)
-	}
-
-	log.Println("Device plugin registered successfully")
-	return nil
-}
-
-// ensureCleanupScript creates a cleanup script for removing files from empty-chardev
-func ensureCleanupScript() error {
-	scriptPath := "/var/lib/hailo-cdi/cleanup-empty-chardev.sh"
-	scriptContent := `#!/bin/sh
-# Cleanup script to remove all files from empty-chardev directory
-rm -rf /var/lib/hailo-cdi/empty-chardev/*
-exit 0
-`
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-		return fmt.Errorf("failed to create cleanup script: %w", err)
-	}
-	return nil
-}
-
-// Start starts the device plugin
-func (p *HailoDevicePlugin) Start() error {
-	err := p.Register()
-	if err != nil {
-		return err
-	}
-
-	// Emptdy directory for mounting isolated sysfs paths
-	os.MkdirAll("/var/lib/hailo-cdi/empty-chardev", 0755)
-	// Ensure cleanup script exists
-	if err := ensureCleanupScript(); err != nil {
-		return fmt.Errorf("failed to ensure cleanup script: %w", err)
-	}
-
-	// Keep checking kubelet connection and re-register if needed
-	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			if err := p.Register(); err != nil {
-				log.Printf("Failed to re-register with kubelet: %v", err)
-			}
-		}
-	}()
-
-	return nil
 }
 
 var _ pluginapi.DevicePluginServer = (*HailoDevicePlugin)(nil)

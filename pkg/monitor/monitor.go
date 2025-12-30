@@ -1,10 +1,12 @@
 package monitor
 
 import (
+	"context"
 	"log"
-	"time"
 	"os/exec"
 	"strings"
+	"time"
+
 	"hailo-device-plugin/pkg/cdi"
 )
 
@@ -18,19 +20,34 @@ func NewResourceMonitor(cdiDir string) *ResourceMonitor {
 	return &ResourceMonitor{cdiDir: cdiDir}
 }
 
-// Start begins monitoring devices
-func (m *ResourceMonitor) Start() {
+// Start begins monitoring devices with context support
+func (m *ResourceMonitor) Start(ctx context.Context) {
 	go func() {
+		// Generate CDI immediately on startup
+		devices := m.discoverDevices()
+		log.Printf("Initial device discovery: %v", devices)
+		if err := cdi.GenerateCDI(devices, m.cdiDir); err != nil {
+			log.Printf("Failed to generate initial CDI: %v", err)
+		} else {
+			log.Println("Initial CDI generated")
+		}
+
 		ticker := time.NewTicker(60 * time.Second) // Check every 60 seconds
 		defer ticker.Stop()
 
-		for range ticker.C {
-			devices := m.discoverDevices() // Implement device discovery
-			log.Printf("Discovered devices: %v", devices)
-			if err := cdi.GenerateCDI(devices, m.cdiDir); err != nil {
-				log.Printf("Failed to generate CDI: %v", err)
-			} else {
-				log.Println("CDI updated")
+		for {
+			select {
+			case <-ticker.C:
+				devices := m.discoverDevices()
+				log.Printf("Discovered devices: %v", devices)
+				if err := cdi.GenerateCDI(devices, m.cdiDir); err != nil {
+					log.Printf("Failed to generate CDI: %v", err)
+				} else {
+					log.Println("CDI updated")
+				}
+			case <-ctx.Done():
+				log.Println("Monitor stopping due to context cancellation")
+				return
 			}
 		}
 	}()

@@ -1,73 +1,66 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net"
 	"os"
-	"path"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"hailo-device-plugin/pkg/monitor"
-	"hailo-device-plugin/pkg/plugin"
-
-	"google.golang.org/grpc"
-	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	"hailo-device-plugin/pkg/statemachine"
 )
 
 const (
-	socketPath = "/var/lib/kubelet/device-plugins/hailo.sock"
+	kubeletSocket = "/var/lib/kubelet/device-plugins/kubelet.sock"
+	pluginSocket  = "/var/lib/kubelet/device-plugins/hailo.sock"
+	resourceName  = "hailo.ai/npu"
+	cdiDir        = "/etc/cdi"
 )
 
 func main() {
-	cdiDir := "/etc/cdi" // Or appropriate directory
+	log.Println("Starting Hailo device plugin...")
+
+	// Create CDI directory
 	if err := os.MkdirAll(cdiDir, 0755); err != nil {
-		log.Fatalf("failed to create CDI directory: %v", err)
+		log.Fatalf("Failed to create CDI directory: %v", err)
 	}
+
+	// Create context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	// Start resource monitor
 	mon := monitor.NewResourceMonitor(cdiDir)
-	mon.Start()
+	mon.Start(ctx)
+	log.Println("Resource monitor started")
 
-	// Create plugin with monitor
-	hailoPlugin := &plugin.HailoDevicePlugin{
-		Monitor:      mon,
-		CdiDir:       cdiDir,
-		SocketPath:   socketPath,
-		ResourceName: "hailo.ai/npu",
+	// Create state machine configuration
+	config := &statemachine.Config{
+		KubeletSocket: kubeletSocket,
+		PluginSocket:  pluginSocket,
+		ResourceName:  resourceName,
+		CdiDir:        cdiDir,
 	}
 
-	if err := os.MkdirAll(path.Dir(socketPath), 0755); err != nil {
-		log.Fatalf("failed to create socket directory: %v", err)
-	}
-	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-		log.Fatalf("failed to remove existing socket: %v", err)
-	}
+	// Create and start state machine
+	sm := statemachine.New(ctx, config)
 
-	lis, err := net.Listen("unix", socketPath)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	defer lis.Close()
-
-	s := grpc.NewServer()
-	pluginapi.RegisterDevicePluginServer(s, hailoPlugin)
-
-	// Start the gRPC server in a goroutine
+	// Handle shutdown signal in a goroutine
 	go func() {
-		log.Println("Starting Hailo device plugin server...")
-		if err := s.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
+		sig := <-sigChan
+		log.Printf("Received signal %v, initiating shutdown...", sig)
+		sm.Shutdown()
 	}()
 
-	// Give the server a moment to start
-	time.Sleep(1 * time.Second)
-
-	// Register with kubelet
-	if err := hailoPlugin.Start(); err != nil {
-		log.Fatalf("failed to register with kubelet: %v", err)
+	// Run state machine (blocking)
+	if err := sm.Run(mon); err != nil {
+		log.Fatalf("State machine error: %v", err)
 	}
 
-	// Keep the main goroutine alive
-	select {}
+	log.Println("Hailo device plugin exited successfully")
 }
