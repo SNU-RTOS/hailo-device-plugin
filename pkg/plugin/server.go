@@ -48,9 +48,12 @@ func (s *Server) Start() error {
 	pluginapi.RegisterDevicePluginServer(s.grpcServer, s.plugin)
 
 	// Start serving in a goroutine
+	// Capture server and listener references to avoid race with Stop()
+	server := s.grpcServer
+	lis := s.listener
 	go func() {
 		log.Printf("Starting gRPC server on %s", s.socketPath)
-		if err := s.grpcServer.Serve(s.listener); err != nil {
+		if err := server.Serve(lis); err != nil {
 			log.Printf("gRPC server error: %v", err)
 			s.serveDone <- err
 		} else {
@@ -75,10 +78,14 @@ func (s *Server) Stop() error {
 
 	log.Println("Stopping gRPC server gracefully...")
 
+	// Save reference before setting to nil
+	server := s.grpcServer
+	s.grpcServer = nil
+
 	// Try graceful stop with timeout
 	stopped := make(chan struct{})
 	go func() {
-		s.grpcServer.GracefulStop()
+		server.GracefulStop()
 		close(stopped)
 	}()
 
@@ -87,7 +94,7 @@ func (s *Server) Stop() error {
 		log.Println("gRPC server stopped gracefully")
 	case <-time.After(5 * time.Second):
 		log.Println("Graceful stop timeout, forcing stop")
-		s.grpcServer.Stop()
+		server.Stop()
 	}
 
 	// Close listener
@@ -95,15 +102,13 @@ func (s *Server) Stop() error {
 		if err := s.listener.Close(); err != nil {
 			log.Printf("Failed to close listener: %v", err)
 		}
+		s.listener = nil
 	}
 
 	// Remove socket file
 	if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("Failed to remove socket: %v", err)
 	}
-
-	s.grpcServer = nil
-	s.listener = nil
 
 	log.Println("gRPC server cleanup complete")
 	return nil
