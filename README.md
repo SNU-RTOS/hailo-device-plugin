@@ -12,13 +12,17 @@ This is a Kubernetes device plugin for Hailo AI accelerators. It provides the ne
 ## Prerequisites
 
 - Kubernetes cluster with device plugin support
+- containerd 1.7 or later (1.7.x or 2.0+)
+- **Recommended**: containerd 2.0+ with K3s v1.31.6+
 - CDI (Container Device Interface) support enabled in the container runtime
 
 ### Enabling CDI Support
 
+**Note**: containerd 2.0+ enables CDI by default. The following configuration is only required for containerd 1.7.x.
+
 For detailed CDI configuration, refer to the [official CDI documentation](https://github.com/cncf-tags/container-device-interface#how-to-configure-cdi).
 
-**For K3s:**
+**For K3s with containerd 1.7.x:**
 
 Edit `/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl` and add:
 
@@ -65,6 +69,33 @@ Expected output showing detected Hailo devices:
 ```
 Hailo Devices:
 [0] PCIe: 0000:01:00.0
+```
+
+If use want to check is pod's bash shell, try this command
+
+```bash
+kubectl run hailo-test --image=ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64 or \
+kubectl run hailo-test --image=ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64 \
+  --restart=Never --rm -it \
+  --overrides='{
+    "spec": {
+      "containers": [
+        {
+          "name": "hailo-test",
+          "image": "ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64",
+          "command": ["/bin/bash"],
+          "stdin": true,
+          "tty": true,
+          "resources": {
+            "limits": {
+              "hailo.ai/npu": "1"
+            }
+          }
+        }
+      ]
+    }
+  }' \
+  -- /bin/bash
 ```
 
 ## Building and Deployment

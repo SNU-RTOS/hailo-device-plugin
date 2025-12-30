@@ -21,7 +21,7 @@ func NewResourceMonitor(cdiDir string) *ResourceMonitor {
 // Start begins monitoring devices
 func (m *ResourceMonitor) Start() {
 	go func() {
-		ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
+		ticker := time.NewTicker(60 * time.Second) // Check every 60 seconds
 		defer ticker.Stop()
 
 		for range ticker.C {
