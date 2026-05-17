@@ -93,22 +93,28 @@ func (p *HailoDevicePlugin) Allocate(ctx context.Context, req *pluginapi.Allocat
 	for _, containerReq := range req.ContainerRequests {
 		log.Printf("Processing container request for %d devices: %v", len(containerReq.DevicesIDs), containerReq.DevicesIDs)
 
-		// Build CDI device names for requested devices
-		var cdiDevices []string
+		// Build CDI device names for requested devices.
+		var cdiDeviceNames []string
+		var cdiDevices []*pluginapi.CDIDevice
 		for _, deviceID := range containerReq.DevicesIDs {
-			// CDI device name format: hailo.ai/npu=<device-name>
 			cdiDeviceName := fmt.Sprintf("hailo.ai/npu=%s", deviceID)
-			cdiDevices = append(cdiDevices, cdiDeviceName)
+			cdiDeviceNames = append(cdiDeviceNames, cdiDeviceName)
+			cdiDevices = append(cdiDevices, &pluginapi.CDIDevice{Name: cdiDeviceName})
 		}
 
+		// Send the same set via both the legacy CDI annotation (older
+		// kubelet/containerd) and the typed CDIDevices field (kubelet
+		// v1.27+ with containerd v1.7+/v2.x). Modern toolchains read
+		// CDIDevices and ignore the annotation; older ones do the
+		// reverse — keeping both makes the plugin work on both.
 		containerResponse := &pluginapi.ContainerAllocateResponse{
-			// Use CDI device names in annotations
 			Annotations: map[string]string{
-				"cdi.k8s.io/hailo": strings.Join(cdiDevices, ","),
+				"cdi.k8s.io/hailo": strings.Join(cdiDeviceNames, ","),
 			},
+			CDIDevices: cdiDevices,
 		}
 
-		log.Printf("Allocated CDI devices: %v", cdiDevices)
+		log.Printf("Allocated CDI devices: %v", cdiDeviceNames)
 		response.ContainerResponses = append(response.ContainerResponses, containerResponse)
 	}
 
