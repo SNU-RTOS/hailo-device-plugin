@@ -57,7 +57,6 @@ type Hook struct {
 	Timeout  int      `json:"timeout,omitempty"`
 }
 
-
 // resolveSysfsPath verifies that the device path exists
 func resolveSysfsPath(deviceID string) error {
 	symlinkPath := filepath.Join("/sys/class/hailo_chardev", deviceID)
@@ -110,19 +109,13 @@ func GenerateCDI(devices []string, outputDir string) error {
 		ContainerEdits: &ContainerEdits{
 			Mounts: []*Mount{
 				{
-					// Mount empty directory to /sys/class/hailo_chardev with rw
-					// This hides all devices initially and allows mounting devices inside
+					// Mount an empty host directory over /sys/class/hailo_chardev (rw) so
+					// no devices are visible; each device's sysfs dir is then bind-mounted
+					// inside it. The runtime creates a mountpoint directory for that, which
+					// the device's poststop hook (hailo-cdi-hook) removes on container exit.
 					HostPath:      "/var/lib/hailo-cdi/empty-chardev",
 					ContainerPath: "/sys/class/hailo_chardev",
 					Options:       []string{"rw", "bind"},
-				},
-			},
-			Hooks: []*Hook{
-				{
-					HookName: "poststop",
-					Path:     "/var/lib/hailo-cdi/cleanup-empty-chardev.sh",
-					Args:     []string{},
-					Timeout:  5,
 				},
 			},
 		},
@@ -152,6 +145,17 @@ func GenerateCDI(devices []string, outputDir string) error {
 						HostPath:    fmt.Sprintf("/dev/%s", dev),
 						Type:        "c",
 						Permissions: "rw",
+					},
+				},
+				Hooks: []*Hook{
+					{
+						// Runs on the host after this container stops and removes the
+						// mountpoint the runtime created for this device in empty-chardev.
+						// Per device, so one pod's exit never touches another pod's mount.
+						HookName: "poststop",
+						Path:     "/var/lib/hailo-cdi/hailo-cdi-hook",
+						Args:     []string{"hailo-cdi-hook", fmt.Sprintf("/var/lib/hailo-cdi/empty-chardev/%s", dev)},
+						Timeout:  5,
 					},
 				},
 				Mounts: sysfsMounts,

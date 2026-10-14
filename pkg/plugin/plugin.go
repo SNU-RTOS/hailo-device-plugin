@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hailo-device-plugin/pkg/cdi"
+	"hailo-device-plugin/pkg/cleanup"
 
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -16,6 +17,9 @@ type HailoDevicePlugin struct {
 	CdiDir       string
 	SocketPath   string
 	ResourceName string
+	// Sweeper removes stale sysfs mountpoints before each allocation.
+	// Optional; nil disables the sweep (used in tests).
+	Sweeper *cleanup.Sweeper
 }
 
 var _ pluginapi.DevicePluginServer = (*HailoDevicePlugin)(nil)
@@ -89,6 +93,20 @@ func (p *HailoDevicePlugin) Allocate(ctx context.Context, req *pluginapi.Allocat
 	log.Printf("Allocate called with request: %v", req)
 
 	var response pluginapi.AllocateResponse
+
+	// Remove stale sysfs mountpoints for devices no longer assigned to any
+	// pod, so the containers created from this allocation don't see them.
+	// Never fails the allocation: a skipped sweep at worst leaves a visible
+	// scan error in the pod, whereas a failed Allocate is not retried.
+	if p.Sweeper != nil {
+		var ids []string
+		for _, cr := range req.ContainerRequests {
+			ids = append(ids, cr.DevicesIDs...)
+		}
+		if err := p.Sweeper.Sweep(ctx, ids); err != nil {
+			log.Printf("Warning: stale mountpoint sweep skipped: %v", err)
+		}
+	}
 
 	for _, containerReq := range req.ContainerRequests {
 		log.Printf("Processing container request for %d devices: %v", len(containerReq.DevicesIDs), containerReq.DevicesIDs)

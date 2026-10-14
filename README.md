@@ -165,6 +165,55 @@ spec:
 - `ghcr.io/snu-rtos/hailort:4.23.0-runtime-amd64` for x86_64/AMD64
 - `ghcr.io/snu-rtos/hailort:4.23.0-runtime-arm64` for ARM64/aarch64
 
+## Cleanup of sysfs mountpoints
+
+The CDI spec hides the host's NPUs by bind-mounting an empty directory
+(`/var/lib/hailo-cdi/empty-chardev`) over `/sys/class/hailo_chardev` and
+overlaying only the allocated device's sysfs directory. The container runtime
+creates a mountpoint directory for that overlay, which persists after the
+container exits. Two mechanisms remove it:
+
+- **Poststop hook.** Each device in the spec carries a `poststop` hook that
+  removes that device's mountpoint when its container stops. The hook is a
+  static binary (`hailo-cdi-hook`, built from `cmd/hailo-cdi-hook`) that the
+  plugin installs to `/var/lib/hailo-cdi/` at startup, so it works on hosts
+  without a shell. It refuses to remove a directory that is still a live
+  mountpoint in another container (e.g. after a crash-restart that reused the
+  device).
+- **Sweep.** At startup and on every `Allocate`, the plugin removes leftover
+  mountpoints for devices the kubelet does not report as assigned to a pod,
+  via the kubelet PodResources API. This requires the
+  `/var/lib/kubelet/pod-resources` hostPath mount in the DaemonSet (included
+  in `deploy/hailo-device-plugin.yaml`). Without it the plugin logs
+  `stale mountpoint sweep skipped` and continues without sweeping.
+
+A pod that sees a leftover mountpoint fails `hailortcli scan` with
+`Failed open /sys/class/hailo_chardev/<dev>/board_location` and
+`HAILO_DRIVER_INVALID_RESPONSE(85)`; that error indicates a stale directory,
+not a driver problem.
+
+## Read-only hosts (Talos Linux)
+
+On hosts where `/etc` is read-only, containerd cannot use its default CDI
+spec directory `/etc/cdi`. Point containerd at a writable location with a
+machine config patch:
+
+```yaml
+machine:
+  files:
+    - path: /etc/cri/conf.d/20-customization.part
+      op: create
+      content: |
+        [plugins."io.containerd.cri.v1.runtime"]
+          cdi_spec_dirs = ["/var/cdi/static", "/var/cdi/dynamic"]
+```
+
+(`[plugins."io.containerd.grpc.v1.cri"]` on containerd 1.7.) Apply with
+`talosctl patch mc --mode=reboot`, then change the `cdi` hostPath in the
+DaemonSet from `/etc/cdi` to `/var/cdi/dynamic`. The plugin itself keeps
+writing to `/etc/cdi` inside its container; the hostPath mapping does the
+rest.
+
 ## Implementation Notes
 
 - The resource monitor discovers devices and generates CDI specs every 30 seconds.
