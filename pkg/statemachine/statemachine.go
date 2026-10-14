@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"hailo-device-plugin/pkg/cleanup"
 	"hailo-device-plugin/pkg/plugin"
 )
 
@@ -49,13 +50,13 @@ type Config struct {
 
 // StateMachine manages the device plugin lifecycle through states
 type StateMachine struct {
-	currentState  State
-	plugin        *plugin.HailoDevicePlugin
-	server        *plugin.Server
-	watcher       *KubeletWatcher
-	config        *Config
-	ctx           context.Context
-	cancelFunc    context.CancelFunc
+	currentState State
+	plugin       *plugin.HailoDevicePlugin
+	server       *plugin.Server
+	watcher      *KubeletWatcher
+	config       *Config
+	ctx          context.Context
+	cancelFunc   context.CancelFunc
 }
 
 // New creates a new state machine
@@ -79,6 +80,7 @@ func (sm *StateMachine) Run(monitor interface{}) error {
 		CdiDir:       sm.config.CdiDir,
 		SocketPath:   sm.config.PluginSocket,
 		ResourceName: sm.config.ResourceName,
+		Sweeper:      cleanup.New(sm.config.ResourceName),
 	}
 
 	for {

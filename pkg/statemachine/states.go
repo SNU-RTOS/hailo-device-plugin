@@ -1,14 +1,14 @@
 package statemachine
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"time"
-	"context"
 
-	"hailo-device-plugin/pkg/plugin"
 	"hailo-device-plugin/pkg/cleanup"
+	"hailo-device-plugin/pkg/plugin"
 )
 
 // handleWaitingForKubelet waits for the kubelet socket to exist
@@ -104,7 +104,7 @@ func (sm *StateMachine) handleRunning() WatchEvent {
 	log.Println("Entering RUNNING state, monitoring kubelet socket...")
 
 	// Create helper directories
-	ensureHelperDirectories(sm.config.ResourceName)
+	ensureHelperDirectories(sm.ctx, sm.config.ResourceName)
 
 	// Create watcher for kubelet socket
 	watcher, err := NewKubeletWatcher(sm.ctx, sm.config.KubeletSocket)
@@ -176,7 +176,7 @@ func (sm *StateMachine) handleShutdown() error {
 }
 
 // ensureHelperDirectories creates directories and helpers needed by CDI
-func ensureHelperDirectories(resourceName string) {
+func ensureHelperDirectories(ctx context.Context, resourceName string) {
 	// Create empty chardev directory for sysfs isolation
 	if err := os.MkdirAll("/var/lib/hailo-cdi/empty-chardev", 0755); err != nil {
 		log.Printf("Warning: failed to create empty-chardev directory: %v", err)
@@ -190,7 +190,7 @@ func ensureHelperDirectories(resourceName string) {
 	// Remove mountpoints left behind by an earlier plugin instance, e.g. after
 	// a node crash where poststop hooks never ran. Consults the kubelet so
 	// devices currently assigned to pods are left untouched.
-	   if err := cleanup.New(resourceName).Sweep(context.Background(), nil); err != nil {
+	if err := cleanup.New(resourceName).Sweep(ctx, nil); err != nil {
 		log.Printf("Warning: stale mountpoint sweep skipped: %v", err)
 	}
 }

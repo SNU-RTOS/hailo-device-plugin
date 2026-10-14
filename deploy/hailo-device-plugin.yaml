@@ -58,7 +58,7 @@ spec:
           type: Directory
       - name: cdi
         hostPath:
-          path: /var/cdi/dynamic
+          path: /etc/cdi
           type: DirectoryOrCreate
       - name: sys
         hostPath:

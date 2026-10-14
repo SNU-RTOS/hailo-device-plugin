@@ -57,7 +57,6 @@ type Hook struct {
 	Timeout  int      `json:"timeout,omitempty"`
 }
 
-
 // resolveSysfsPath verifies that the device path exists
 func resolveSysfsPath(deviceID string) error {
 	symlinkPath := filepath.Join("/sys/class/hailo_chardev", deviceID)
@@ -110,8 +109,10 @@ func GenerateCDI(devices []string, outputDir string) error {
 		ContainerEdits: &ContainerEdits{
 			Mounts: []*Mount{
 				{
-					// Mount empty directory to /sys/class/hailo_chardev with rw
-					// This hides all devices initially and allows mounting devices inside
+					// Mount an empty host directory over /sys/class/hailo_chardev (rw) so
+					// no devices are visible; each device's sysfs dir is then bind-mounted
+					// inside it. The runtime creates a mountpoint directory for that, which
+					// the device's poststop hook (hailo-cdi-hook) removes on container exit.
 					HostPath:      "/var/lib/hailo-cdi/empty-chardev",
 					ContainerPath: "/sys/class/hailo_chardev",
 					Options:       []string{"rw", "bind"},
