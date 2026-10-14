@@ -117,14 +117,6 @@ func GenerateCDI(devices []string, outputDir string) error {
 					Options:       []string{"rw", "bind"},
 				},
 			},
-			Hooks: []*Hook{
-				{
-					HookName: "poststop",
-					Path:     "/var/lib/hailo-cdi/cleanup-empty-chardev.sh",
-					Args:     []string{},
-					Timeout:  5,
-				},
-			},
 		},
 	}
 
@@ -152,6 +144,17 @@ func GenerateCDI(devices []string, outputDir string) error {
 						HostPath:    fmt.Sprintf("/dev/%s", dev),
 						Type:        "c",
 						Permissions: "rw",
+					},
+				},
+				Hooks: []*Hook{
+					{
+						// Runs on the host after this container stops and removes the
+						// mountpoint the runtime created for this device in empty-chardev.
+						// Per device, so one pod's exit never touches another pod's mount.
+						HookName: "poststop",
+						Path:     "/var/lib/hailo-cdi/hailo-cdi-hook",
+						Args:     []string{"hailo-cdi-hook", fmt.Sprintf("/var/lib/hailo-cdi/empty-chardev/%s", dev)},
+						Timeout:  5,
 					},
 				},
 				Mounts: sysfsMounts,

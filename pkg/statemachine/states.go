@@ -5,8 +5,10 @@ import (
 	"log"
 	"os"
 	"time"
+	"context"
 
 	"hailo-device-plugin/pkg/plugin"
+	"hailo-device-plugin/pkg/cleanup"
 )
 
 // handleWaitingForKubelet waits for the kubelet socket to exist
@@ -102,7 +104,7 @@ func (sm *StateMachine) handleRunning() WatchEvent {
 	log.Println("Entering RUNNING state, monitoring kubelet socket...")
 
 	// Create helper directories
-	ensureHelperDirectories()
+	ensureHelperDirectories(sm.config.ResourceName)
 
 	// Create watcher for kubelet socket
 	watcher, err := NewKubeletWatcher(sm.ctx, sm.config.KubeletSocket)
@@ -173,29 +175,46 @@ func (sm *StateMachine) handleShutdown() error {
 	return nil
 }
 
-// ensureHelperDirectories creates directories needed by CDI
-func ensureHelperDirectories() {
+// ensureHelperDirectories creates directories and helpers needed by CDI
+func ensureHelperDirectories(resourceName string) {
 	// Create empty chardev directory for sysfs isolation
 	if err := os.MkdirAll("/var/lib/hailo-cdi/empty-chardev", 0755); err != nil {
 		log.Printf("Warning: failed to create empty-chardev directory: %v", err)
 	}
 
-	// Create cleanup script
-	if err := ensureCleanupScript(); err != nil {
-		log.Printf("Warning: failed to create cleanup script: %v", err)
+	// Install the poststop hook binary
+	if err := installHook(); err != nil {
+		log.Printf("Warning: failed to install cleanup hook: %v", err)
+	}
+
+	// Remove mountpoints left behind by an earlier plugin instance, e.g. after
+	// a node crash where poststop hooks never ran. Consults the kubelet so
+	// devices currently assigned to pods are left untouched.
+	   if err := cleanup.New(resourceName).Sweep(context.Background(), nil); err != nil {
+		log.Printf("Warning: stale mountpoint sweep skipped: %v", err)
 	}
 }
 
-// ensureCleanupScript creates a cleanup script for removing files from empty-chardev
-func ensureCleanupScript() error {
-	scriptPath := "/var/lib/hailo-cdi/cleanup-empty-chardev.sh"
-	scriptContent := `#!/bin/sh
-# Cleanup script to remove all files from empty-chardev directory
-rm -rf /var/lib/hailo-cdi/empty-chardev/*
-exit 0
-`
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-		return fmt.Errorf("failed to create cleanup script: %w", err)
+// installHook copies the static poststop hook binary shipped in the image to
+// the host-visible helper directory so the container runtime can execute it.
+// It is written to a temporary name and renamed so a hook firing mid-copy
+// never sees a truncated file.
+func installHook() error {
+	const src = "/opt/hailo/hailo-cdi-hook"
+	const dst = "/var/lib/hailo-cdi/hailo-cdi-hook"
+
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read hook binary: %w", err)
 	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, 0755); err != nil {
+		return fmt.Errorf("failed to write hook binary: %w", err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("failed to install hook binary: %w", err)
+	}
+	// Remove the legacy shell hook if present from an older version.
+	_ = os.Remove("/var/lib/hailo-cdi/cleanup-empty-chardev.sh")
 	return nil
 }
